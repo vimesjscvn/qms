@@ -1,0 +1,251 @@
+version: '3.7'
+
+volumes:
+  postgres_data:
+    driver: local
+  metabase_data:
+    driver: local
+  portainer_data:
+    driver: local
+
+networks:
+  kiosk:
+    driver: bridge
+
+services:
+  metabase:
+    image: metabase/metabase
+    container_name: metabase
+    restart: unless-stopped
+    ports:
+      - '53000:3000'
+    volumes:
+      - metabase_data:/metabase-data
+    networks:
+      - kiosk
+
+  portainer:
+    image: portainer/portainer-ce
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - '59000:9000'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - kiosk
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: kiosk-pg-admin-${PROFILE_ENV}
+    restart: unless-stopped
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - '50080:80'
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+    profiles: ["dev", "prod"]
+    networks:
+      - kiosk
+
+  pgdatabase:
+    image: postgres:14.1-alpine
+    container_name: kiosk-db-${PROFILE_ENV}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - '5436:5432'
+    volumes:
+      - ./docker-entrypoint-initdb.d/qms.pro.sql:/docker-entrypoint-initdb.d/qms.pro.sql
+      - ./docker-entrypoint-initdb.d/init-user-db.sh:/docker-entrypoint-initdb.d/init-user-db.sh
+      - ./postgres_data:/var/lib/postgresql/data:rw
+      - ./docker-entrypoint-initdb.d/wait-for-it.sh:/docker-entrypoint-initdb.d/wait-for-it.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "chmod +x /docker-entrypoint-initdb.d/wait-for-it.sh && chmod +x /docker-entrypoint-initdb.d/init-user-db.sh && docker-entrypoint.sh postgres && /docker-entrypoint-initdb.d/wait-for-it.sh localhost:5432 -- /docker-entrypoint-initdb.d/init-user-db.sh"
+      ]
+    networks:
+      - kiosk
+
+  cron:
+    image: alpine:latest
+    container_name: kiosk-cron-${PROFILE_ENV}
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - CRON_SCHEDULE=${CRON_SCHEDULE}
+    volumes:
+      - ./docker-entrypoint-cron.d/reset.sql:/reset.sql
+      - ./docker-entrypoint-cron.d/reset.sh:/reset.sh
+      - /etc/localtime:/etc/localtime:ro
+      - ./logs:/var/log
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "apk update && apk add --no-cache postgresql-client && chmod 755 /reset.sh && echo '$CRON_SCHEDULE /reset.sh >> /var/log/cron_job.log 2>&1' > /etc/crontabs/root && crond -f"
+      ]
+    networks:
+      - kiosk
+
+  tek.payment.core:
+    image: thientam1992/kiosk-core-api:latest
+    container_name: kiosk-core-api-${PROFILE_ENV}
+    environment:
+      - Hospital__HospitalCode=${HOSPITAL_HOSPITAL_CODE}
+      - Hospital__FeeId=${HOSPITAL_FEE_ID}
+      - Insurance__Username=${INSURANCE_USERNAME}
+      - Insurance__Password=${INSURANCE_PASSWORD}
+      - GroupDeptConfig__IsActive=${GROUP_DEPT_CONFIG_IS_ACTIVE}
+    restart: always
+    ports:
+      - "5003:80"
+    volumes:
+      - ./TEK.Payment.Core/wwwroot:/app/wwwroot
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+    profiles: ["dev", "prod"]
+    networks:
+      - kiosk
+
+  tek.bvk.his.gateway:
+    image: thientam1992/kiosk-out-gw:latest
+    container_name: kiosk-out-gw-${PROFILE_ENV}
+    environment:
+      - Hospital__HospitalCode=${HOSPITAL_HOSPITAL_CODE}
+      - External__BaseUrl=${EXTERNAL_BASE_URL}
+    restart: always
+    ports:
+      - "5009:80"
+    volumes:
+      - ./TEK.BVK.HIS.Gateway/wwwroot:/app/wwwroot
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+    profiles: ["dev", "prod"]
+    networks:
+      - kiosk
+
+  tek.payment.admin:
+    image: thientam1992/kiosk-admin-api:latest
+    container_name: kiosk-admin-api-${PROFILE_ENV}
+    environment:
+      - Hospital__HospitalCode=${HOSPITAL_HOSPITAL_CODE}
+      - BackgroundJob__SyncDepartmentJobConfig=${SYNC_DEPARTMENT_JOB_CONFIG}
+      - BackgroundJob__ResetOrderNumberJobConfig=${RESET_ORDER_NUMBER_JOB_CONFIG}
+    restart: always
+    ports:
+      - "5005:80"
+    volumes:
+      - ./TEK.Core.Admin/wwwroot:/app/wwwroot
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+    profiles: ["dev", "prod"]
+    networks:
+      - kiosk
+
+  tek.bvk.public.gateway:
+    image: thientam1992/kiosk-in-gw:latest
+    container_name: kiosk-in-gw-${PROFILE_ENV}
+    environment:
+      - Hospital__HospitalCode=${HOSPITAL_HOSPITAL_CODE}
+    restart: always
+    ports:
+      - "5004:80"
+    volumes:
+      - ./TEK.Gateway.K/wwwroot:/app/wwwroot
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+    profiles: ["dev", "prod"]
+    networks:
+      - kiosk
+
+  tek.dept.group:
+    image: thientam1992/kiosk-dept-api:latest
+    container_name: kiosk-dept-group-${PROFILE_ENV}
+    environment:
+      - Hospital__HospitalCode=${HOSPITAL_HOSPITAL_CODE}
+    restart: always
+    ports:
+      - "5006:80"
+    volumes:
+      - ./TEK.DepartmentGroup.API/wwwroot:/app/wwwroot
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+    profiles: ["dev", "prod"]
+    networks:
+      - kiosk
+
+  tek.auth.api:
+    image: thientam1992/kiosk-auth-api:latest
+    container_name: kiosk-auth-${PROFILE_ENV}
+    environment:
+      - Hospital__HospitalCode=${HOSPITAL_HOSPITAL_CODE}
+    restart: always
+    ports:
+      - "5001:80"
+    volumes:
+      - ./TEK.Authorization.API/wwwroot:/app/wwwroot
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+    profiles: ["dev", "prod"]
+    networks:
+      - kiosk
+
+  tek.lcd.web:
+    image: thientam1992/kiosk-lcd:latest
+    container_name: kiosk-lcd-${PROFILE_ENV}
+    environment:
+      - CLIENT_KEY=${CLIENT_KEY}
+      - CLIENT_LOCATION=${CLIENT_LOCATION}
+      - SETTING_TIMER=${SETTING_TIMER}
+      - ROOM_TIMER=${ROOM_TIMER}
+      - TNB_TIMER=${TNB_TIMER}
+      - CLS_TIMER=${CLS_TIMER}
+      - CLS_ROW=${CLS_ROW}
+      - APP_LOGO=${APP_LOGO}
+      - APP_FOOTER_SLOGAN=${APP_FOOTER_SLOGAN}
+      - END_POINT=${END_POINT}
+      - END_POINT_DEPT=${END_POINT_DEPT}
+      - API_AUDIO_RING=${API_AUDIO_RING}
+      - URL_VIDEO=${URL_VIDEO}
+      - API_TEMP_URL=${API_TEMP_URL}
+      - SUB_URL_API_TEMP=${SUB_URL_API_TEMP}
+      - API_TEMP_KEY=${API_TEMP_KEY}
+      - LOCATION=${LOCATION}
+      - NODE_ENV=${NODE_ENV}
+      - CFG_ENV=${CFG_ENV}
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "5008:3000"
+    profiles: ["dev", "prod"]
+    networks:
+      - kiosk
