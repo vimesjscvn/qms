@@ -1,4 +1,4 @@
-version: '3.7'
+﻿version: '3.7'
 
 volumes:
   postgres_data:
@@ -35,23 +35,6 @@ services:
       - portainer_data:/data
     networks:
       - kiosk
-
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: kiosk-pg-admin-${PROFILE_ENV}
-    restart: unless-stopped
-    environment:
-      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL}
-      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
-    ports:
-      - '50080:80'
-    depends_on:
-      pgdatabase:
-        condition: service_healthy
-    profiles: ["dev", "prod"]
-    networks:
-      - kiosk
-
   pgdatabase:
     image: postgres:14.1-alpine
     container_name: kiosk-db-${PROFILE_ENV}
@@ -63,14 +46,14 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
     ports:
-      - '5436:5432'
+      - '5435:5432'
     volumes:
       - ./docker-entrypoint-initdb.d/qms.pro.sql:/docker-entrypoint-initdb.d/qms.pro.sql
       - ./docker-entrypoint-initdb.d/init-user-db.sh:/docker-entrypoint-initdb.d/init-user-db.sh
       - ./postgres_data:/var/lib/postgresql/data:rw
       - ./docker-entrypoint-initdb.d/wait-for-it.sh:/docker-entrypoint-initdb.d/wait-for-it.sh
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -109,12 +92,38 @@ services:
     networks:
       - kiosk
 
-  tek.payment.core:
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: kiosk-pg-admin-${PROFILE_ENV}
+    restart: unless-stopped
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - '5080:80'
+    profiles: [ "dev", "prod" ]
+    networks:
+      - kiosk
+
+  kiosk.api:
     image: thientam1992/kiosk-core-api:latest
     container_name: kiosk-core-api-${PROFILE_ENV}
     environment:
       - Hospital__HospitalCode=${HOSPITAL_HOSPITAL_CODE}
       - Hospital__FeeId=${HOSPITAL_FEE_ID}
+      - Hospital__ReExamMaxDay=${HOSPITAL_RE_EXAM_MAX_DAY}
+      - Hospital__ReExamMinDay=${HOSPITAL_RE_EXAM_MIN_DAY}
+      - Hospital__IsGroup=${HOSPITAL_IS_GROUP}
+      - Hospital__IsPriority=${HOSPITAL_IS_PRIORITY}
+      - Hospital__IsManual=${HOSPITAL_IS_MANUAL}
+      - Hospital__GroupCode=${HOSPITAL_GROUP_CODE}
+      - Hospital__IsForce=${HOSPITAL_IS_FORCE}
+      - Hospital__HoldDeviceId=${HOSPITAL_HOLD_DEVICE_ID}
+      - Hospital__MinBalance=${HOSPITAL_MIN_BALANCE}
+      - Hospital__LimitSyncPaidWaiting=${HOSPITAL_LIMIT_SYNC_PAID_WAITING}
+      - Hospital__CardFee=${HOSPITAL_CARD_FEE}
+      - Hospital__TempPatientCode=${HOSPITAL_TEMP_PATIENT_CODE}
+      - Hospital__HospitalArea=${HOSPITAL_AREA}
       - Insurance__Username=${INSURANCE_USERNAME}
       - Insurance__Password=${INSURANCE_PASSWORD}
       - GroupDeptConfig__IsActive=${GROUP_DEPT_CONFIG_IS_ACTIVE}
@@ -122,105 +131,177 @@ services:
     ports:
       - "5003:80"
     volumes:
-      - ./TEK.Payment.Core/wwwroot:/app/wwwroot
+      - ./Kiosk.API/wwwroot:/app/wwwroot
     depends_on:
       pgdatabase:
         condition: service_healthy
-    profiles: ["dev", "prod"]
+    profiles: [ "dev", "prod" ]
     networks:
       - kiosk
 
-  tek.bvk.his.gateway:
+  private.gateway.api:
     image: thientam1992/kiosk-out-gw:latest
     container_name: kiosk-out-gw-${PROFILE_ENV}
     environment:
       - Hospital__HospitalCode=${HOSPITAL_HOSPITAL_CODE}
+      - Hospital__FeeId=${HOSPITAL_FEE_ID}
+      - Hospital__ReExamMaxDay=${HOSPITAL_RE_EXAM_MAX_DAY}
+      - Hospital__ReExamMinDay=${HOSPITAL_RE_EXAM_MIN_DAY}
+      - Hospital__IsGroup=${HOSPITAL_IS_GROUP}
+      - Hospital__IsPriority=${HOSPITAL_IS_PRIORITY}
+      - Hospital__IsManual=${HOSPITAL_IS_MANUAL}
+      - Hospital__GroupCode=${HOSPITAL_GROUP_CODE}
+      - Hospital__IsForce=${HOSPITAL_IS_FORCE}
+      - Hospital__HoldDeviceId=${HOSPITAL_HOLD_DEVICE_ID}
+      - Hospital__MinBalance=${HOSPITAL_MIN_BALANCE}
+      - Hospital__LimitSyncPaidWaiting=${HOSPITAL_LIMIT_SYNC_PAID_WAITING}
+      - Hospital__CardFee=${HOSPITAL_CARD_FEE}
+      - Hospital__TempPatientCode=${HOSPITAL_TEMP_PATIENT_CODE}
+      - Hospital__HospitalArea=${HOSPITAL_AREA}
       - External__BaseUrl=${EXTERNAL_BASE_URL}
     restart: always
     ports:
       - "5009:80"
     volumes:
-      - ./TEK.BVK.HIS.Gateway/wwwroot:/app/wwwroot
+      - ./Private.Gateway.API/wwwroot:/app/wwwroot
     depends_on:
       pgdatabase:
         condition: service_healthy
-    profiles: ["dev", "prod"]
+    profiles: [ "dev", "prod" ]
     networks:
       - kiosk
 
-  tek.payment.admin:
+  admin.api:
     image: thientam1992/kiosk-admin-api:latest
     container_name: kiosk-admin-api-${PROFILE_ENV}
     environment:
       - Hospital__HospitalCode=${HOSPITAL_HOSPITAL_CODE}
+      - Hospital__FeeId=${HOSPITAL_FEE_ID}
+      - Hospital__ReExamMaxDay=${HOSPITAL_RE_EXAM_MAX_DAY}
+      - Hospital__ReExamMinDay=${HOSPITAL_RE_EXAM_MIN_DAY}
+      - Hospital__IsGroup=${HOSPITAL_IS_GROUP}
+      - Hospital__IsPriority=${HOSPITAL_IS_PRIORITY}
+      - Hospital__IsManual=${HOSPITAL_IS_MANUAL}
+      - Hospital__GroupCode=${HOSPITAL_GROUP_CODE}
+      - Hospital__IsForce=${HOSPITAL_IS_FORCE}
+      - Hospital__HoldDeviceId=${HOSPITAL_HOLD_DEVICE_ID}
+      - Hospital__MinBalance=${HOSPITAL_MIN_BALANCE}
+      - Hospital__LimitSyncPaidWaiting=${HOSPITAL_LIMIT_SYNC_PAID_WAITING}
+      - Hospital__CardFee=${HOSPITAL_CARD_FEE}
+      - Hospital__TempPatientCode=${HOSPITAL_TEMP_PATIENT_CODE}
+      - Hospital__HospitalArea=${HOSPITAL_AREA}
       - BackgroundJob__SyncDepartmentJobConfig=${SYNC_DEPARTMENT_JOB_CONFIG}
       - BackgroundJob__ResetOrderNumberJobConfig=${RESET_ORDER_NUMBER_JOB_CONFIG}
     restart: always
     ports:
       - "5005:80"
     volumes:
-      - ./TEK.Core.Admin/wwwroot:/app/wwwroot
+      - ./Admin.API/wwwroot:/app/wwwroot
     depends_on:
       pgdatabase:
         condition: service_healthy
-    profiles: ["dev", "prod"]
+    profiles: [ "dev", "prod" ]
     networks:
       - kiosk
 
-  tek.bvk.public.gateway:
+  public.gateway.api:
     image: thientam1992/kiosk-in-gw:latest
     container_name: kiosk-in-gw-${PROFILE_ENV}
     environment:
       - Hospital__HospitalCode=${HOSPITAL_HOSPITAL_CODE}
+      - Hospital__FeeId=${HOSPITAL_FEE_ID}
+      - Hospital__ReExamMaxDay=${HOSPITAL_RE_EXAM_MAX_DAY}
+      - Hospital__ReExamMinDay=${HOSPITAL_RE_EXAM_MIN_DAY}
+      - Hospital__IsGroup=${HOSPITAL_IS_GROUP}
+      - Hospital__IsPriority=${HOSPITAL_IS_PRIORITY}
+      - Hospital__IsManual=${HOSPITAL_IS_MANUAL}
+      - Hospital__GroupCode=${HOSPITAL_GROUP_CODE}
+      - Hospital__IsForce=${HOSPITAL_IS_FORCE}
+      - Hospital__HoldDeviceId=${HOSPITAL_HOLD_DEVICE_ID}
+      - Hospital__MinBalance=${HOSPITAL_MIN_BALANCE}
+      - Hospital__LimitSyncPaidWaiting=${HOSPITAL_LIMIT_SYNC_PAID_WAITING}
+      - Hospital__CardFee=${HOSPITAL_CARD_FEE}
+      - Hospital__TempPatientCode=${HOSPITAL_TEMP_PATIENT_CODE}
+      - Hospital__HospitalArea=${HOSPITAL_AREA}
+      - Hospital__NextCallTime=${HOSPITAL_NEXT_CALL_TIME}
+      - Hospital__MaxLimitNumberOfCallingPatient=${HOSPITAL_MAX_LIMIT_NUMBER_OF_CALLING_PATIENT}
     restart: always
     ports:
       - "5004:80"
     volumes:
-      - ./TEK.Gateway.K/wwwroot:/app/wwwroot
+      - ./Public.Gateway.API/wwwroot:/app/wwwroot
     depends_on:
       pgdatabase:
         condition: service_healthy
-    profiles: ["dev", "prod"]
+    profiles: [ "dev", "prod" ]
     networks:
       - kiosk
 
-  tek.dept.group:
+  dept.api:
     image: thientam1992/kiosk-dept-api:latest
     container_name: kiosk-dept-group-${PROFILE_ENV}
     environment:
       - Hospital__HospitalCode=${HOSPITAL_HOSPITAL_CODE}
+      - Hospital__FeeId=${HOSPITAL_FEE_ID}
+      - Hospital__ReExamMaxDay=${HOSPITAL_RE_EXAM_MAX_DAY}
+      - Hospital__ReExamMinDay=${HOSPITAL_RE_EXAM_MIN_DAY}
+      - Hospital__IsGroup=${HOSPITAL_IS_GROUP}
+      - Hospital__IsPriority=${HOSPITAL_IS_PRIORITY}
+      - Hospital__IsManual=${HOSPITAL_IS_MANUAL}
+      - Hospital__GroupCode=${HOSPITAL_GROUP_CODE}
+      - Hospital__IsForce=${HOSPITAL_IS_FORCE}
+      - Hospital__HoldDeviceId=${HOSPITAL_HOLD_DEVICE_ID}
+      - Hospital__MinBalance=${HOSPITAL_MIN_BALANCE}
+      - Hospital__LimitSyncPaidWaiting=${HOSPITAL_LIMIT_SYNC_PAID_WAITING}
+      - Hospital__CardFee=${HOSPITAL_CARD_FEE}
+      - Hospital__TempPatientCode=${HOSPITAL_TEMP_PATIENT_CODE}
+      - Hospital__HospitalArea=${HOSPITAL_AREA}
     restart: always
     ports:
       - "5006:80"
     volumes:
-      - ./TEK.DepartmentGroup.API/wwwroot:/app/wwwroot
+      - ./DepartmentGroup.API/wwwroot:/app/wwwroot
     depends_on:
       pgdatabase:
         condition: service_healthy
-    profiles: ["dev", "prod"]
+    profiles: [ "dev", "prod" ]
     networks:
       - kiosk
 
-  tek.auth.api:
+  auth.api:
     image: thientam1992/kiosk-auth-api:latest
-    container_name: kiosk-auth-${PROFILE_ENV}
+    container_name: kiosk-auth-api-${PROFILE_ENV}
     environment:
       - Hospital__HospitalCode=${HOSPITAL_HOSPITAL_CODE}
+      - Hospital__FeeId=${HOSPITAL_FEE_ID}
+      - Hospital__ReExamMaxDay=${HOSPITAL_RE_EXAM_MAX_DAY}
+      - Hospital__ReExamMinDay=${HOSPITAL_RE_EXAM_MIN_DAY}
+      - Hospital__IsGroup=${HOSPITAL_IS_GROUP}
+      - Hospital__IsPriority=${HOSPITAL_IS_PRIORITY}
+      - Hospital__IsManual=${HOSPITAL_IS_MANUAL}
+      - Hospital__GroupCode=${HOSPITAL_GROUP_CODE}
+      - Hospital__IsForce=${HOSPITAL_IS_FORCE}
+      - Hospital__HoldDeviceId=${HOSPITAL_HOLD_DEVICE_ID}
+      - Hospital__MinBalance=${HOSPITAL_MIN_BALANCE}
+      - Hospital__LimitSyncPaidWaiting=${HOSPITAL_LIMIT_SYNC_PAID_WAITING}
+      - Hospital__CardFee=${HOSPITAL_CARD_FEE}
+      - Hospital__TempPatientCode=${HOSPITAL_TEMP_PATIENT_CODE}
+      - Hospital__HospitalArea=${HOSPITAL_AREA}
     restart: always
     ports:
       - "5001:80"
     volumes:
-      - ./TEK.Authorization.API/wwwroot:/app/wwwroot
+      - ./Auth.API/wwwroot:/app/wwwroot
     depends_on:
       pgdatabase:
         condition: service_healthy
-    profiles: ["dev", "prod"]
+    profiles: [ "dev", "prod" ]
     networks:
       - kiosk
-
+  
   tek.lcd.web:
-    image: thientam1992/kiosk-lcd:latest
-    container_name: kiosk-lcd-${PROFILE_ENV}
+    image: thientam1992/kiosk-lcd-web:latest
+    container_name: kiosk-lcd-web-${PROFILE_ENV}
     environment:
       - CLIENT_KEY=${CLIENT_KEY}
       - CLIENT_LOCATION=${CLIENT_LOCATION}
